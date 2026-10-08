@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Office Attendance Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+        <div>
+            <h1 class="text-xl font-bold tracking-tight text-slate-900">Office Attendance Portal</h1>
+            <p class="text-xs text-slate-500">Employee Check-In & Leave Request System</p>
+        </div>
+        <div id="admin-badge" class="hidden">
+            <span class="px-2.5 py-1 text-xs font-semibold rounded bg-slate-900 text-white">Administrator Mode</span>
+            <button onclick="logoutAdmin()" class="ml-2 text-xs text-red-600 underline">Logout</button>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-white border-b border-slate-200 px-6">
+        <div class="max-w-6xl mx-auto flex gap-6" id="nav-tabs">
+            <button onclick="switchTab('checkin')" id="tab-checkin" class="py-3 text-sm tab-active">Check-In / Out</button>
+            <button onclick="switchTab('leave')" id="tab-leave" class="py-3 text-sm tab-inactive">Apply for Leave</button>
+            <button onclick="switchTab('register')" id="tab-register" class="py-3 text-sm tab-inactive">First-Time Registration</button>
+            <button onclick="switchTab('employee-login')" id="tab-employee-login" class="py-3 text-sm tab-inactive">Employee Login</button>
+            <button onclick="switchTab('employee-dashboard')" id="tab-employee-dashboard" class="py-3 text-sm tab-inactive hidden">My Dashboard</button>
+            <button onclick="switchTab('admin')" id="tab-admin" class="py-3 text-sm tab-inactive hidden">Admin Console</button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6">
+
+        <!-- TAB 1: CHECK-IN / CHECK-OUT -->
+        <section id="sec-checkin" class="space-y-6">
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Employee Check-In Verification</h2>
+                <p class="text-xs text-slate-500 mb-6">Enter your registered Phone/ID to verify your face and GPS location. Admins can enter the admin key.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Step 1 -->
+                    <div class="border border-slate-200 rounded p-4 bg-slate-50 flex flex-col justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Step 1: Identify Employee</div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Phone Number / Employee ID</label>
+                            <input type="text" id="checkin-id" placeholder="Enter your registered Phone or ID" class="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white">
+                        </div>
+                        <button onclick="verifyStep1()" class="mt-4 w-full btn-primary text-xs py-2 rounded font-medium">Verify ID & Location</button>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="border border-slate-200 rounded p-4 bg-slate-50 flex flex-col justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Step 2: Geofence Verification</div>
+                            <div id="geo-status-box" class="text-xs text-slate-600 bg-white border border-slate-200 rounded p-3 min-h-[80px] flex items-center justify-center text-center">
+                                Awaiting Employee ID submission...
+                            </div>
+                        </div>
+                        <div class="text-[11px] text-slate-400 mt-2 text-center">Calculates distance from office coordinates</div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="border border-slate-200 rounded p-4 bg-slate-50 flex flex-col justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Step 3: Face Verification</div>
+                            <div class="relative bg-slate-900 rounded overflow-hidden aspect-video flex items-center justify-center mb-2">
+                                <video id="checkin-video" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+                                <span id="checkin-cam-placeholder" class="text-xs text-slate-400">Camera inactive</span>
+                            </div>
+                        </div>
+                        <button onclick="performCheckIn()" id="btn-submit-attendance" disabled class="w-full bg-slate-300 text-slate-500 text-xs py-2 rounded font-medium cursor-not-allowed">Verify Face & Record</button>
+                    </div>
+                </div>
+
+                <div id="checkin-result" class="mt-6 hidden p-4 border rounded text-xs font-medium"></div>
+            </div>
+        </section>
+
+        <!-- TAB 2: APPLY FOR LEAVE (EMPLOYEE SIDE) -->
+        <section id="sec-leave" class="hidden">
+            <div class="bg-white border border-slate-200 rounded p-6 max-w-xl mx-auto">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Apply for Leave</h2>
+                <p class="text-xs text-slate-500 mb-6">Submit leave request for admin review.</p>
+
+                <form onsubmit="handleApplyLeave(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Phone Number / Employee ID</label>
+                        <input type="text" id="leave-emp-id" required placeholder="Enter registered Phone or ID" class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Leave Type</label>
+                        <select id="leave-type" class="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white">
+                            <option value="Casual Leave">Casual Leave</option>
+                            <option value="Sick Leave">Sick Leave</option>
+                            <option value="Earned Leave">Earned Leave</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Start Date</label>
+                            <input type="date" id="leave-start" required class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">End Date</label>
+                            <input type="date" id="leave-end" required class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Reason</label>
+                        <textarea id="leave-reason" required rows="3" placeholder="Brief reason for leave request..." class="w-full text-sm border border-slate-300 rounded px-3 py-2"></textarea>
+                    </div>
+                    <button type="submit" class="w-full btn-primary text-xs py-2.5 rounded font-medium">Submit Leave Request</button>
+                </form>
+
+                <div id="leave-result" class="mt-4 hidden p-3 border rounded text-xs font-medium"></div>
+            </div>
+        </section>
+
+        <!-- TAB 3: FIRST-TIME REGISTRATION -->
+        <section id="sec-register" class="hidden">
+            <div class="bg-white border border-slate-200 rounded p-6 max-w-xl mx-auto">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">First-Time Employee Registration</h2>
+                <p class="text-xs text-slate-500 mb-6">Register your profile and save a face template in this browser. The camera image is not stored.</p>
+
+                <form onsubmit="handleRegistration(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
+                        <input type="text" id="reg-name" required placeholder="Enter full name" class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Phone / Employee ID</label>
+                            <input type="text" id="reg-phone" required placeholder="Unique ID number" class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Department</label>
+                            <select id="reg-dept" class="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white">
+                                <option value="Operations">Operations</option>
+                                <option value="Administration">Administration</option>
+                                <option value="Finance">Finance</option>
+                                <option value="IT">IT</option>
+                                <option value="HR">HR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="border border-slate-200 rounded p-4 bg-slate-50">
+                        <div class="relative bg-slate-900 rounded overflow-hidden aspect-video flex items-center justify-center mb-3">
+                            <video id="register-video" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+                            <span id="register-cam-placeholder" class="text-xs text-slate-400">Camera inactive</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="startRegistrationCamera()" class="flex-1 btn-secondary text-xs py-2 rounded font-medium">Start Camera</button>
+                            <button type="button" onclick="captureRegistrationFace()" id="btn-capture-registration-face" disabled class="flex-1 bg-slate-300 text-slate-500 text-xs py-2 rounded font-medium cursor-not-allowed">Capture Face</button>
+                        </div>
+                        <p id="register-face-status" class="text-xs text-slate-500 mt-2" aria-live="polite">Capture a clear face image before saving your profile.</p>
+                    </div>
+                    <button type="submit" class="w-full btn-primary text-xs py-2.5 rounded font-medium">Save Employee Profile</button>
+                </form>
+
+                <div id="reg-result" class="mt-4 hidden p-3 border rounded text-xs font-medium"></div>
+            </div>
+        </section>
+
+        <!-- EMPLOYEE LOGIN -->
+        <section id="sec-employee-login" class="hidden">
+            <div class="bg-white border border-slate-200 rounded p-6 max-w-xl mx-auto">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Employee Login</h2>
+                <p class="text-xs text-slate-500 mb-6">Enter your own registered ID and verify your face to open your dashboard. Face matching runs in this browser.</p>
+                <form onsubmit="handleEmployeeLogin(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1" for="employee-login-id">Phone Number / Employee ID</label>
+                        <input type="text" id="employee-login-id" required placeholder="Enter your registered Phone or ID" class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <div class="relative bg-slate-900 rounded overflow-hidden aspect-video flex items-center justify-center">
+                        <video id="employee-login-video" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+                        <span id="employee-login-cam-placeholder" class="text-xs text-slate-400">Camera inactive</span>
+                    </div>
+                    <button type="button" onclick="startEmployeeLoginCamera()" class="w-full btn-secondary text-xs py-2 rounded font-medium">Start Camera</button>
+                    <button type="submit" id="btn-employee-login" disabled class="w-full bg-slate-300 text-slate-500 text-xs py-2.5 rounded font-medium cursor-not-allowed">Verify Face & Login</button>
+                    <p id="employee-login-status" class="text-xs text-slate-500" aria-live="polite"></p>
+                </form>
+            </div>
+        </section>
+
+        <!-- EMPLOYEE DASHBOARD -->
+        <section id="sec-employee-dashboard" class="hidden space-y-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 id="employee-dashboard-title" class="text-xl font-semibold">My Dashboard</h2>
+                    <p class="text-sm text-slate-500">Your attendance and leave request status</p>
+                </div>
+                <button onclick="logoutEmployee()" class="btn-secondary text-xs px-3 py-2 rounded font-medium">Log Out</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white border border-slate-200 rounded p-5">
+                    <div class="text-xs text-slate-500">Days Present This Month</div>
+                    <div id="employee-present-days" class="text-3xl font-bold text-slate-900 mt-2">0</div>
+                    <div id="employee-month-label" class="text-xs text-slate-500 mt-1"></div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded p-5">
+                    <div class="text-xs text-slate-500">Approved Leave Requests</div>
+                    <div id="employee-approved-leaves" class="text-3xl font-bold text-emerald-700 mt-2">0</div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded p-5">
+                    <div class="text-xs text-slate-500">Rejected Leave Requests</div>
+                    <div id="employee-rejected-leaves" class="text-3xl font-bold text-red-600 mt-2">0</div>
+                </div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h3 class="text-base font-semibold">My Leave Requests</h3>
+                <div class="overflow-x-auto mt-4">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                                <th class="p-2">Type</th>
+                                <th class="p-2">Dates</th>
+                                <th class="p-2">Reason</th>
+                                <th class="p-2">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employee-leave-table-body" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ADMIN CONSOLE -->
+        <section id="sec-admin" class="hidden space-y-6">
+            
+            <!-- Admin Geofence Settings -->
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Geofence Location Settings</h2>
+                <p class="text-xs text-slate-500 mb-4">Customize target office latitude, longitude, and max allowed radius.</p>
+                <form onsubmit="saveGeofenceSettings(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Latitude</label>
+                        <input type="number" step="any" id="geo-lat" required class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Longitude</label>
+                        <input type="number" step="any" id="geo-lng" required class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Max Distance (Meters)</label>
+                        <input type="number" id="geo-radius" required class="w-full text-sm border border-slate-300 rounded px-3 py-2">
+                    </div>
+                    <button type="submit" class="btn-primary text-xs py-2.5 rounded font-medium">Save Geofence</button>
+                </form>
+                <div id="geo-save-msg" class="text-xs text-emerald-700 mt-2 hidden font-medium">Geofence parameters updated!</div>
+            </div>
+
+            <!-- Analytics Dashboard -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white border border-slate-200 rounded p-4">
+                    <div class="text-xs text-slate-500">Total Employees</div>
+                    <div id="stat-emp-count" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded p-4">
+                    <div class="text-xs text-slate-500">Today's Check-Ins</div>
+                    <div id="stat-checkin-count" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded p-4">
+                    <div class="text-xs text-slate-500">Pending Leaves</div>
+                    <div id="stat-leave-count" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+                </div>
+            </div>
+
+            <!-- Analytics Chart -->
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h3 class="text-sm font-semibold mb-4">Department Attendance Distribution</h3>
+                <div class="max-w-md mx-auto aspect-square max-h-60">
+                    <canvas id="deptChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Today's Attendance Logs & Selfies -->
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Today's Logged Employees & Captured Selfies</h2>
+                <div class="overflow-x-auto mt-4">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                                <th class="p-2">Selfie</th>
+                                <th class="p-2">Timestamp</th>
+                                <th class="p-2">Name</th>
+                                <th class="p-2">Phone / ID</th>
+                                <th class="p-2">Dept</th>
+                                <th class="p-2">Distance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendance-table-body" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Leave Management Panel -->
+            <div class="bg-white border border-slate-200 rounded p-6">
+                <h2 class="text-base font-semibold text-slate-900 mb-1">Manage Employee Leave Requests</h2>
+                <div class="overflow-x-auto mt-4">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                                <th class="p-2">Emp ID</th>
+                                <th class="p-2">Type</th>
+                                <th class="p-2">Dates</th>
+                                <th class="p-2">Reason</th>
+                                <th class="p-2">Status</th>
+                                <th class="p-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leave-table-body" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
